@@ -7,6 +7,9 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
 <style>
   body { font-family: 'Segoe UI', Arial, sans-serif; }
   .badge { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
@@ -101,8 +104,15 @@
     <button id="navHT" onclick="switchTab('ht')" class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 text-slate-300 hover:bg-white/5 hover:text-white">
       <span>📻</span> HT &amp; HP
     </button>
+    <!-- Menu Laporan disembunyikan sementara (data & kode tetap ada, tinggal diaktifkan lagi nanti) -->
+    <!-- <button id="navLaporan" onclick="switchTab('laporan')" class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 text-slate-300 hover:bg-white/5 hover:text-white">
+      <span>📊</span> Laporan
+    </button> -->
     <button id="navProfil" onclick="switchTab('profil')" class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 text-slate-300 hover:bg-white/5 hover:text-white">
       <span>👤</span> Profil
+    </button>
+    <button id="navRiwayat" onclick="switchTab('riwayat')" class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 text-slate-300 hover:bg-white/5 hover:text-white">
+      <span>🕒</span> Riwayat
     </button>
   </nav>
   <div class="p-3 border-t border-white/10 space-y-2">
@@ -204,6 +214,43 @@
   </div>
 </div>
 
+<!-- ============ TAB: LAPORAN ============ -->
+<div id="tabLaporan" class="hidden px-6 mt-6 pb-10 space-y-6">
+
+  <!-- KALENDER ROSTER -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <h3 class="font-semibold text-sm">📅 Kalender Roster</h3>
+      <div class="flex items-center gap-2">
+        <button onclick="shiftCalendarMonth(-1)" class="px-2 py-1 rounded-lg border text-sm hover:bg-slate-50">◀</button>
+        <span id="calendarMonthLabel" class="text-sm font-semibold w-32 text-center">-</span>
+        <button onclick="shiftCalendarMonth(1)" class="px-2 py-1 rounded-lg border text-sm hover:bg-slate-50">▶</button>
+      </div>
+    </div>
+    <div class="flex gap-4 text-xs mb-3">
+      <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-400 inline-block"></span> Insite (Kerja)</div>
+      <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-sky-400 inline-block"></span> Outsite (Cuti)</div>
+      <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-400 inline-block"></span> Overdue</div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="text-xs border-collapse" id="calendarTable"></table>
+    </div>
+  </div>
+
+  <!-- GRAFIK BULANAN -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-semibold text-sm mb-3">📈 Hari Cuti Terpakai per Bulan</h3>
+      <canvas id="chartCutiTerpakai" height="220"></canvas>
+    </div>
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-semibold text-sm mb-3">📈 Jumlah Kejadian Roster per Bulan</h3>
+      <canvas id="chartKejadian" height="220"></canvas>
+    </div>
+  </div>
+
+</div>
+
 <!-- ============ TAB: PROFIL ============ -->
 <div id="tabProfil" class="hidden px-6 mt-6 pb-10">
   <div class="max-w-lg space-y-5">
@@ -245,8 +292,59 @@
   </div>
 </div>
 
+<!-- ============ TAB: RIWAYAT ============ -->
+<div id="tabRiwayat" class="hidden px-6 mt-6 pb-10 space-y-6">
+
+  <!-- RIWAYAT PERPINDAHAN HT/HP (LENGKAP) -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+      <h3 class="font-semibold text-sm">🔄 Riwayat Perpindahan HT & HP (Semua Perangkat)</h3>
+      <button onclick="loadFullHandoverLog()" class="text-xs text-indigo-600 underline">Muat ulang</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">Semua serah terima dari seluruh perangkat, terbaru di atas.</p>
+    <input id="searchFullHandover" oninput="renderFullHandoverLog()" placeholder="Cari SN, nama karyawan..." class="border rounded-lg px-3 py-2 w-full max-w-sm text-sm mb-3">
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-xs">
+        <thead class="bg-slate-100 text-slate-600">
+          <tr>
+            <th class="p-2 text-left">Tanggal</th>
+            <th class="p-2 text-left">Perangkat</th>
+            <th class="p-2 text-left">Dari</th>
+            <th class="p-2 text-left">Ke</th>
+            <th class="p-2 text-left">Bukti</th>
+            <th class="p-2 text-left">Catatan</th>
+          </tr>
+        </thead>
+        <tbody id="fullHandoverTableBody"></tbody>
+      </table>
+    </div>
+    <div id="fullHandoverEmpty" class="text-xs text-slate-400 text-center py-8 hidden">Belum ada riwayat perpindahan.</div>
+  </div>
+
+  <!-- RIWAYAT PENGHAPUSAN -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="font-semibold text-sm">🗑️ Riwayat Penghapusan</h3>
+      <button onclick="loadDeletionLog()" class="text-xs text-indigo-600 underline">Muat ulang</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-4">Catatan siapa menghapus data karyawan atau HT/HP, dan kapan.</p>
+    <div id="deletionLogContent" class="text-xs text-slate-400">Memuat...</div>
+  </div>
+
+</div>
+
 </div><!-- /main content flex-1 -->
 </div><!-- /flex wrapper -->
+
+<!-- ============ MODAL: PREVIEW FOTO ============ -->
+<div id="modalPhotoPreview" class="fixed inset-0 modal-bg hidden items-center justify-center z-[60]" onclick="if(event.target===this) closeModal('modalPhotoPreview')">
+  <div class="bg-white rounded-xl p-3 max-w-md w-full mx-4">
+    <img id="photoPreviewImg" src="" class="w-full max-h-[70vh] object-contain rounded-lg">
+    <div class="flex justify-end mt-2">
+      <button onclick="closeModal('modalPhotoPreview')" class="px-4 py-2 rounded-lg text-sm bg-slate-200">Tutup</button>
+    </div>
+  </div>
+</div>
 
 <!-- ============ MODAL: ADD EMPLOYEE ============ -->
 <div id="modalAddEmployee" class="fixed inset-0 modal-bg hidden items-center justify-center z-50">
@@ -309,9 +407,14 @@
 <!-- ============ MODAL: HISTORY ============ -->
 <div id="modalHistory" class="fixed inset-0 modal-bg hidden items-center justify-center z-50">
   <div class="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-    <h2 class="text-lg font-bold mb-1">Riwayat & Saldo</h2>
-    <p class="text-xs text-slate-500 mb-4" id="histEmployeeName"></p>
-    <div id="histContent"></div>
+    <div class="flex items-start justify-between mb-1">
+      <div>
+        <h2 class="text-lg font-bold">Riwayat & Saldo</h2>
+        <p class="text-xs text-slate-500" id="histEmployeeName"></p>
+      </div>
+      <button onclick="printSlipCutiPDF()" class="text-xs bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap">🖨️ Cetak Slip PDF</button>
+    </div>
+    <div id="histContent" class="mt-3"></div>
     <div class="flex justify-end mt-5">
       <button onclick="closeModal('modalHistory')" class="px-4 py-2 rounded-lg text-sm bg-slate-200">Tutup</button>
     </div>
@@ -330,7 +433,7 @@
       <div>
         <label class="text-xs text-slate-500 block mb-1">Foto Profil</label>
         <div class="flex items-center gap-3">
-          <img id="editFotoPreview" class="w-16 h-16 rounded-full object-cover border bg-slate-100 hidden">
+          <img id="editFotoPreview" class="w-16 h-16 rounded-full object-cover border bg-slate-100 hidden cursor-zoom-in" onclick="if(this.src) openPhotoPreview(this.src)">
           <input type="file" id="editFotoFile" accept="image/*" onchange="previewPhoto('editFotoFile','editFotoPreview')" class="text-xs">
         </div>
       </div>
@@ -341,6 +444,7 @@
     <div class="flex justify-between gap-2 mt-5">
       <button onclick="if(currentDetailEmployee) openHistoryModal(currentDetailEmployee.id)" class="px-4 py-2 rounded-lg text-sm bg-slate-500 text-white">Lihat Riwayat Cuti</button>
       <div class="flex gap-2">
+        <button onclick="deleteEmployeeConfirm()" class="px-4 py-2 rounded-lg text-sm bg-red-500 text-white font-semibold">Hapus Karyawan</button>
         <button onclick="closeModal('modalDetailKaryawan')" class="px-4 py-2 rounded-lg text-sm bg-slate-200">Batal</button>
         <button onclick="saveEmployeeDetail()" class="px-4 py-2 rounded-lg text-sm bg-emerald-500 text-white font-semibold">Simpan</button>
       </div>
@@ -571,6 +675,7 @@ async function doLogout(){
 function showApp(user){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appContent').classList.remove('hidden');
+  loggedInUserEmail = user.email;
   const emailEl = document.getElementById('currentUserEmail');
   if(emailEl) emailEl.innerText = user.email;
   const profilEmail = document.getElementById('profilEmail');
@@ -597,6 +702,7 @@ let currentEventEmployee = null;
 let currentHistEmployee = null;
 let currentDetailEmployee = null;
 let currentHT = null;
+let loggedInUserEmail = null;
 
 const ROSTER_CYCLE_DAYS = 70;
 const WARNING_DAYS = 30;
@@ -824,6 +930,11 @@ async function uploadEmployeePhoto(file, nik){
   return data.publicUrl;
 }
 
+function openPhotoPreview(url){
+  document.getElementById('photoPreviewImg').src = url;
+  openModal('modalPhotoPreview');
+}
+
 // ============ ADD EMPLOYEE ============
 function openAddEmployeeModal(){
   ['inpNik','inpNama','inpJabatan','inpGolongan','inpNoHp','inpAlamat','inpNoKamar'].forEach(id=>document.getElementById(id).value='');
@@ -865,10 +976,10 @@ async function saveEmployee(){
 
 async function markKembaliInsite(empId){
   const today = todayStr();
-  const {error} = await sb.from('employees').update({status:'insite', cycle_start_date: today}).eq('id', empId);
+  const {error} = await sb.from('employees').update({status:'insite', cycle_start_date: today, expected_return_date: null}).eq('id', empId);
   if(error){ alert('Gagal update: ' + error.message); return; }
   const emp = employees.find(e=>e.id===empId);
-  emp.status = 'insite'; emp.cycle_start_date = today;
+  emp.status = 'insite'; emp.cycle_start_date = today; emp.expected_return_date = null;
   render();
 }
 
@@ -993,8 +1104,9 @@ async function submitEvent(){
       notes: `Perkiraan kembali: ${returnDate}`
     });
 
-    await sb.from('employees').update({status:'outsite'}).eq('id', emp.id);
+    await sb.from('employees').update({status:'outsite', expected_return_date: returnDate}).eq('id', emp.id);
     emp.status = 'outsite';
+    emp.expected_return_date = returnDate;
 
   } else if(type === 'diundur'){
     const days = parseInt(document.getElementById('evDaysPostponed').value || '0');
@@ -1184,9 +1296,9 @@ async function renderHistoryContent(){
 
 // ============ TAB SWITCHING ============
 function switchTab(name){
-  const titles = { roster: 'Roster & Cuti', karyawan: 'Data Karyawan', ht: 'HT & HP', profil: 'Profil' };
+  const titles = { roster: 'Roster & Cuti', karyawan: 'Data Karyawan', ht: 'HT & HP', profil: 'Profil', riwayat: 'Riwayat' };
   document.getElementById('pageTitle').innerText = titles[name];
-  ['Roster','Karyawan','HT','Profil'].forEach(t=>{
+  ['Roster','Karyawan','HT','Profil','Riwayat'].forEach(t=>{
     const active = t.toLowerCase() === name;
     document.getElementById('tab'+t).classList.toggle('hidden', !active);
     document.getElementById('nav'+t).classList.toggle('bg-white/10', active);
@@ -1194,6 +1306,7 @@ function switchTab(name){
     document.getElementById('nav'+t).classList.toggle('text-slate-300', !active);
   });
   document.getElementById('btnAddEmployeeHeader').classList.toggle('hidden', name !== 'roster');
+  if(name === 'riwayat'){ loadFullHandoverLog(); loadDeletionLog(); }
 }
 
 // ============ TAB: DATA KARYAWAN ============
@@ -1207,7 +1320,7 @@ function renderKaryawanTab(){
   grid.innerHTML = list.map(emp=>{
     const initials = emp.nama.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
     const avatar = emp.foto_url
-      ? `<img src="${emp.foto_url}" class="w-14 h-14 rounded-full object-cover border" onerror="this.style.display='none'">`
+      ? `<img src="${emp.foto_url}" class="w-14 h-14 rounded-full object-cover border cursor-zoom-in" onclick="event.stopPropagation(); openPhotoPreview('${emp.foto_url}')" onerror="this.style.display='none'">`
       : `<div class="w-14 h-14 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">${initials}</div>`;
     return `
     <div class="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md" onclick="openEmployeeDetailModal('${emp.id}')">
@@ -1301,7 +1414,8 @@ function renderHTTab(){
       <td class="p-2">${holder ? holder.nama+' <span class="text-slate-400">('+(holder.jabatan||'-')+')</span>' : '<span class="text-slate-400">Belum ada / di Admin</span>'}</td>
       <td class="p-2 whitespace-nowrap">
         <button onclick="openSerahTerimaModal('${ht.id}')" class="text-xs bg-indigo-500 text-white px-2 py-1 rounded-lg mr-1">Serah Terima</button>
-        <button onclick="openHTHistoryModal('${ht.id}')" class="text-xs bg-slate-500 text-white px-2 py-1 rounded-lg">Riwayat</button>
+        <button onclick="openHTHistoryModal('${ht.id}')" class="text-xs bg-slate-500 text-white px-2 py-1 rounded-lg mr-1">Riwayat</button>
+        <button onclick="deleteHTConfirm('${ht.id}')" class="text-xs bg-red-500 text-white px-2 py-1 rounded-lg">Hapus</button>
       </td>
     </tr>`;
   }).join('');
@@ -1417,9 +1531,10 @@ function renderHTHistoryList(){
 
   const visibleLogs = logs.slice(0, htHistShowCount);
   const initials = (name)=> name ? name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '—';
-  const avatarChip = (name, colorClass) => `
+  const avatarChip = (name, colorClass, fotoUrl) => `
     <div class="flex flex-col items-center w-16">
-      <div class="w-9 h-9 rounded-full ${colorClass} flex items-center justify-center text-[10px] font-bold">${initials(name)}</div>
+      ${fotoUrl ? `<img src="${fotoUrl}" class="w-9 h-9 rounded-full object-cover border" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
+      <div class="w-9 h-9 rounded-full ${colorClass} items-center justify-center text-[10px] font-bold" style="display:${fotoUrl ? 'none' : 'flex'};">${initials(name)}</div>
       <div class="text-[10px] text-center mt-1 leading-tight">${name || 'Admin'}</div>
     </div>`;
 
@@ -1437,9 +1552,9 @@ function renderHTHistoryList(){
           ${isLatest ? '<span class="badge bg-emerald-200 text-emerald-800">Terbaru</span>' : ''}
         </div>
         <div class="flex items-center gap-2">
-          ${avatarChip(fromEmp ? fromEmp.nama : 'Admin/Gudang', 'bg-slate-200 text-slate-600')}
+          ${avatarChip(fromEmp ? fromEmp.nama : 'Admin/Gudang', 'bg-slate-200 text-slate-600', fromEmp ? fromEmp.foto_url : null)}
           <div class="flex-1 text-center text-slate-400">➜</div>
-          ${avatarChip(toEmp ? toEmp.nama : 'Admin/Gudang', 'bg-indigo-200 text-indigo-700')}
+          ${avatarChip(toEmp ? toEmp.nama : 'Admin/Gudang', 'bg-indigo-200 text-indigo-700', toEmp ? toEmp.foto_url : null)}
         </div>
         ${log.notes ? `<div class="text-xs text-slate-500 mt-2">📝 ${log.notes}</div>` : ''}
         ${log.bukti_drive_link ? `<a href="${log.bukti_drive_link}" target="_blank" class="inline-block mt-2 text-xs text-indigo-600 underline">📎 Lihat bukti serah terima</a>` : `<div class="text-xs text-amber-600 mt-2">⚠ Tidak ada link bukti</div>`}
@@ -1456,6 +1571,298 @@ function renderHTHistoryList(){
     </div>`;
   }
   document.getElementById('htHistContent').innerHTML = html;
+}
+
+// ============ LAPORAN: KALENDER ROSTER ============
+let calendarDate = new Date();
+
+function shiftCalendarMonth(delta){
+  calendarDate.setMonth(calendarDate.getMonth() + delta);
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const table = document.getElementById('calendarTable');
+  if(!table) return;
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth(); // 0-11
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  document.getElementById('calendarMonthLabel').innerText = `${monthNames[month]} ${year}`;
+
+  const pad = n => String(n).padStart(2,'0');
+  const dateStrOf = day => `${year}-${pad(month+1)}-${pad(day)}`;
+
+  let thead = '<thead><tr><th class="p-1 text-left sticky left-0 bg-white border-b" style="min-width:140px;">Karyawan</th>';
+  for(let d=1; d<=daysInMonth; d++) thead += `<th class="p-1 border-b text-center" style="min-width:22px;">${d}</th>`;
+  thead += '</tr></thead>';
+
+  let tbody = '<tbody>';
+  employees.forEach(emp=>{
+    tbody += `<tr><td class="p-1 sticky left-0 bg-white border-b font-medium whitespace-nowrap">${emp.nama}</td>`;
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = dateStrOf(d);
+      let color = 'bg-slate-100';
+      const cycleEnd = addDays(emp.cycle_start_date, ROSTER_CYCLE_DAYS);
+      if(emp.status === 'outsite' && emp.expected_return_date){
+        if(ds >= todayStr() && ds < emp.expected_return_date){
+          color = 'bg-sky-400';
+        } else if(ds >= emp.cycle_start_date && ds < todayStr()){
+          color = 'bg-emerald-400';
+        }
+      } else {
+        if(ds >= emp.cycle_start_date && ds < cycleEnd){
+          color = 'bg-emerald-400';
+        } else if(ds >= cycleEnd){
+          color = 'bg-red-400';
+        }
+      }
+      tbody += `<td class="p-0 border-b text-center"><div class="${color} h-4 w-full"></div></td>`;
+    }
+    tbody += '</tr>';
+  });
+  tbody += '</tbody>';
+
+  table.innerHTML = thead + tbody;
+}
+
+// ============ LAPORAN: GRAFIK BULANAN ============
+let chartCutiInstance = null;
+let chartKejadianInstance = null;
+
+async function renderMonthlyCharts(){
+  const {data: events, error} = await sb.from('roster_events').select('*').order('event_date', {ascending:true});
+  if(error || !events){ return; }
+
+  const monthKey = dateStr => dateStr.slice(0,7); // YYYY-MM
+  const monthNamesShort = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const labelOf = key => { const [y,m] = key.split('-'); return monthNamesShort[parseInt(m)-1] + ' ' + y.slice(2); };
+
+  // ambil 6 bulan terakhir termasuk bulan berjalan
+  const now = new Date();
+  const months = [];
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+
+  const tahunanPerBulan = {}, extraPerBulan = {};
+  const kejadianPerBulan = {}; // {bulan: {pulang_normal, diundur, diuangkan}}
+  months.forEach(m=>{ tahunanPerBulan[m]=0; extraPerBulan[m]=0; kejadianPerBulan[m]={pulang_normal:0,diundur:0,diuangkan:0}; });
+
+  events.forEach(ev=>{
+    const mk = monthKey(ev.event_date);
+    if(!(mk in kejadianPerBulan)) return; // di luar rentang 6 bulan, skip
+    kejadianPerBulan[mk][ev.event_type] = (kejadianPerBulan[mk][ev.event_type]||0) + 1;
+    if(ev.event_type === 'pulang_normal'){
+      tahunanPerBulan[mk] += (ev.annual_used||0);
+      extraPerBulan[mk] += (ev.extra_used||0);
+    }
+  });
+
+  const labels = months.map(labelOf);
+
+  if(chartCutiInstance) chartCutiInstance.destroy();
+  chartCutiInstance = new Chart(document.getElementById('chartCutiTerpakai'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Tahunan', data: months.map(m=>tahunanPerBulan[m]), backgroundColor: '#10b981' },
+        { label: 'Extra', data: months.map(m=>extraPerBulan[m]), backgroundColor: '#6366f1' }
+      ]
+    },
+    options: { responsive:true, plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true},y:{stacked:true, beginAtZero:true}} }
+  });
+
+  if(chartKejadianInstance) chartKejadianInstance.destroy();
+  chartKejadianInstance = new Chart(document.getElementById('chartKejadian'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Pulang Normal', data: months.map(m=>kejadianPerBulan[m].pulang_normal), backgroundColor: '#0ea5e9' },
+        { label: 'Diundur', data: months.map(m=>kejadianPerBulan[m].diundur), backgroundColor: '#f59e0b' },
+        { label: 'Diuangkan', data: months.map(m=>kejadianPerBulan[m].diuangkan), backgroundColor: '#ef4444' }
+      ]
+    },
+    options: { responsive:true, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
+  });
+}
+
+// ============ LAPORAN: CETAK SLIP CUTI PDF ============
+async function printSlipCutiPDF(){
+  const emp = currentHistEmployee;
+  if(!emp){ return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.setFontSize(14);
+  doc.text('Slip Cuti Karyawan', 14, 16);
+  doc.setFontSize(9);
+  doc.text('Portal GA Service - Camp & Facility', 14, 22);
+
+  doc.setFontSize(10);
+  doc.text(`Nama: ${emp.nama}`, 14, 32);
+  doc.text(`NIK: ${emp.nik}`, 14, 38);
+  doc.text(`Jabatan: ${emp.jabatan||'-'}`, 14, 44);
+  doc.text(`Tanggal Masuk Kerja: ${fmtDate(emp.join_date)}`, 14, 50);
+  doc.text(`Saldo Tahunan Saat Ini: ${saldoTahunan(emp.id)} hari`, 120, 32);
+  doc.text(`Saldo Extra Saat Ini: ${saldoExtra(emp.id)} hari`, 120, 38);
+  doc.text(`Dicetak: ${fmtDate(todayStr())}`, 120, 44);
+
+  const tah = annualLedger.filter(r=>r.employee_id===emp.id).sort((a,b)=>b.earned_date.localeCompare(a.earned_date));
+  const ext = extraLedger.filter(r=>r.employee_id===emp.id).sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date));
+  const {data: events} = await sb.from('roster_events').select('*').eq('employee_id', emp.id).order('event_date', {ascending:false});
+
+  doc.autoTable({
+    startY: 58,
+    head: [['Saldo Tahunan', 'Didapat', 'Expired', 'Jumlah', 'Terpakai', 'Dicairkan', 'Sisa']],
+    body: tah.map(r=>['', fmtDate(r.earned_date), fmtDate(r.expiry_date), r.amount, r.used, r.cashed, remaining(r,'annual')]),
+    styles: { fontSize: 8 }, headStyles: { fillColor: [11,31,77] }
+  });
+
+  doc.autoTable({
+    startY: doc.lastAutoTable.finalY + 6,
+    head: [['Saldo Extra', 'Transaksi', 'Expired', 'Hari Diundur', 'Extra', 'Terpakai', 'Dicairkan', 'Sisa']],
+    body: ext.map(r=>['', fmtDate(r.transaction_date), fmtDate(r.expiry_date), r.days_postponed, r.extra_earned, r.used, r.cashed, remaining(r,'extra')]),
+    styles: { fontSize: 8 }, headStyles: { fillColor: [11,31,77] }
+  });
+
+  doc.autoTable({
+    startY: doc.lastAutoTable.finalY + 6,
+    head: [['Tanggal', 'Jenis Kejadian', 'Detail']],
+    body: (events||[]).map(ev=>{
+      let detail = '';
+      if(ev.event_type==='pulang_normal') detail = `Kombinasi ${ev.combination} (Tahunan ${ev.annual_used}, Extra ${ev.extra_used})`;
+      if(ev.event_type==='diundur') detail = `Diundur ${ev.days_postponed} hari`;
+      if(ev.event_type==='diuangkan') detail = `Istirahat ${ev.rest_days} hari, siklus reset`;
+      return [fmtDate(ev.event_date), ev.event_type.replace('_',' '), detail];
+    }),
+    styles: { fontSize: 8 }, headStyles: { fillColor: [11,31,77] }
+  });
+
+  doc.save(`Slip-Cuti-${emp.nik}-${emp.nama.replace(/\s+/g,'_')}.pdf`);
+}
+
+// ============ RIWAYAT PERPINDAHAN LENGKAP (SEMUA PERANGKAT) ============
+let fullHandoverLogs = [];
+
+async function loadFullHandoverLog(){
+  const {data, error} = await sb.from('ht_handover_log').select('*').order('tanggal', {ascending:false}).order('created_at', {ascending:false});
+  if(error){ console.error(error); return; }
+  fullHandoverLogs = data || [];
+  renderFullHandoverLog();
+}
+
+function renderFullHandoverLog(){
+  const search = (document.getElementById('searchFullHandover')?.value || '').toLowerCase();
+  const tbody = document.getElementById('fullHandoverTableBody');
+  const emptyEl = document.getElementById('fullHandoverEmpty');
+  if(!tbody) return;
+
+  const rows = fullHandoverLogs.filter(log=>{
+    const ht = handyTalkies.find(h=>h.id===log.ht_id);
+    const fromEmp = employees.find(e=>e.id===log.from_employee_id);
+    const toEmp = employees.find(e=>e.id===log.to_employee_id);
+    const haystack = [ht?.sn, ht?.merk_tipe, fromEmp?.nama, toEmp?.nama].join(' ').toLowerCase();
+    return !search || haystack.includes(search);
+  });
+
+  if(rows.length === 0){
+    tbody.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+  emptyEl.classList.add('hidden');
+
+  tbody.innerHTML = rows.map(log=>{
+    const ht = handyTalkies.find(h=>h.id===log.ht_id);
+    const fromEmp = employees.find(e=>e.id===log.from_employee_id);
+    const toEmp = employees.find(e=>e.id===log.to_employee_id);
+    const jenisIcon = ht ? (ht.jenis === 'HP' ? '📱' : '📻') : '❓';
+    return `<tr class="border-b hover:bg-slate-50">
+      <td class="p-2 whitespace-nowrap">${fmtDate(log.tanggal)}</td>
+      <td class="p-2 whitespace-nowrap cursor-pointer text-indigo-600" onclick="${ht ? `openHTHistoryModal('${ht.id}')` : ''}">${jenisIcon} ${ht ? ht.sn : '(perangkat sudah dihapus)'}</td>
+      <td class="p-2">${fromEmp ? fromEmp.nama : 'Admin/Gudang'}</td>
+      <td class="p-2">${toEmp ? toEmp.nama : 'Admin/Gudang'}</td>
+      <td class="p-2">${log.bukti_drive_link ? `<a href="${log.bukti_drive_link}" target="_blank" class="text-indigo-600 underline">Lihat</a>` : '<span class="text-amber-600">Tidak ada</span>'}</td>
+      <td class="p-2">${log.notes||'-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ============ HAPUS KARYAWAN (dengan audit log) ============
+async function deleteEmployeeConfirm(){
+  const emp = currentDetailEmployee;
+  if(!emp) return;
+  const konfirmasi = prompt(`Ketik NIK karyawan (${emp.nik}) untuk konfirmasi hapus "${emp.nama}". Tindakan ini tidak bisa dibatalkan.`);
+  if(konfirmasi !== emp.nik){
+    if(konfirmasi !== null) alert('NIK tidak cocok, penghapusan dibatalkan.');
+    return;
+  }
+
+  const {error: logError} = await sb.from('deletion_log').insert({
+    entity_type: 'employee',
+    entity_label: `${emp.nama} (NIK: ${emp.nik})`,
+    deleted_by: loggedInUserEmail || 'tidak diketahui'
+  });
+  if(logError){ alert('Gagal mencatat log hapus: ' + logError.message); return; }
+
+  const {error} = await sb.from('employees').delete().eq('id', emp.id);
+  if(error){ alert('Gagal menghapus: ' + error.message); return; }
+
+  employees = employees.filter(e=>e.id !== emp.id);
+  annualLedger = annualLedger.filter(r=>r.employee_id !== emp.id);
+  extraLedger = extraLedger.filter(r=>r.employee_id !== emp.id);
+  closeModal('modalDetailKaryawan');
+  render();
+  renderKaryawanTab();
+  renderHTTab();
+  alert('Karyawan berhasil dihapus.');
+}
+
+// ============ HAPUS HT/HP (dengan audit log) ============
+async function deleteHTConfirm(htId){
+  const ht = handyTalkies.find(h=>h.id===htId);
+  if(!ht) return;
+  const konfirmasi = prompt(`Ketik SN/IMEI (${ht.sn}) untuk konfirmasi hapus perangkat ini. Tindakan ini tidak bisa dibatalkan.`);
+  if(konfirmasi !== ht.sn){
+    if(konfirmasi !== null) alert('SN/IMEI tidak cocok, penghapusan dibatalkan.');
+    return;
+  }
+
+  const {error: logError} = await sb.from('deletion_log').insert({
+    entity_type: 'handy_talky',
+    entity_label: `${ht.jenis||'HT'} — SN: ${ht.sn} (${ht.merk_tipe||'-'})`,
+    deleted_by: loggedInUserEmail || 'tidak diketahui'
+  });
+  if(logError){ alert('Gagal mencatat log hapus: ' + logError.message); return; }
+
+  const {error} = await sb.from('handy_talkies').delete().eq('id', htId);
+  if(error){ alert('Gagal menghapus: ' + error.message); return; }
+
+  handyTalkies = handyTalkies.filter(h=>h.id !== htId);
+  renderHTTab();
+  alert('Perangkat berhasil dihapus.');
+}
+
+async function loadDeletionLog(){
+  const container = document.getElementById('deletionLogContent');
+  container.innerHTML = 'Memuat...';
+  const {data, error} = await sb.from('deletion_log').select('*').order('deleted_at', {ascending:false}).limit(50);
+  if(error){ container.innerHTML = `<span class="text-red-600">Gagal memuat: ${error.message}</span>`; return; }
+  if(!data || data.length === 0){ container.innerHTML = 'Belum ada riwayat penghapusan.'; return; }
+
+  container.innerHTML = data.map(log=>{
+    const icon = log.entity_type === 'employee' ? '👤' : '📻';
+    const dt = new Date(log.deleted_at);
+    const dtStr = dt.toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'}) + ' ' + dt.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'});
+    return `<div class="border-b py-2">
+      <div class="font-semibold text-slate-700">${icon} ${log.entity_label}</div>
+      <div class="text-slate-400">Dihapus oleh <b>${log.deleted_by}</b> — ${dtStr}</div>
+    </div>`;
+  }).join('');
 }
 
 // ============ PROFIL: UBAH PASSWORD ============
